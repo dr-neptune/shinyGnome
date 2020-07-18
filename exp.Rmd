@@ -1,0 +1,402 @@
+
+```{r}
+library(tidyverse)
+library(shiny)
+library(seewave)
+```
+
+# Get a Sound 
+
+```{r}
+kick <- tuneR::readWave("kick.wav")
+skick <- tuneR::readWave("psytrance.wav")
+
+tuneR::play(kick)
+tuneR::setWavPlayer("/usr/bin/paplay")
+
+one_note <- function(bpm, sound = sobj) {
+    one <- function(){
+        Sys.sleep(60 / bpm)
+        tuneR::play(sound)
+    }
+    one
+}
+
+library(tuneR)
+wobj <- sine(440)
+ssobj <- pulse(100, duration = 0.05, xunit = "time")
+sobj <- pulse(50, duration = 0.05, xunit = "time")
+
+tuneR::play(ssobj)
+
+silent_note <- function(bpm) {
+    one <- function() {
+        Sys.sleep(60 / bpm)
+        tuneR::play(tuneR::silence(duration = 0.1, xunit = "time"))
+    }
+    one
+}
+
+one_note(300)()
+silent_note(3000)()
+
+walk(list(one_note(120)(), silent_note(120)(), one_note(120)(), one_note(120)()), ~ .x %>% eval())
+
+one_note(60) %>% do.call(what = ., args = "")
+
+nth_note <- function(times, div, bpm, sound = skick) {
+    note <- function() {
+        speed <- floor((div / 4) * bpm)
+        for (i in 1:times) {
+            Sys.sleep(60 / speed)
+            tuneR::play(sound)
+            ## one_note(speed, sound = skick)()
+        }
+    }
+    note
+}
+
+x_measures <- function(beat, measures = 4) {
+    for (i in 1:measures) {
+        beat()
+    }
+}
+
+one_note(60)()
+uno <- nth_note(4, 4, 60)
+uno()
+
+eval(uno())
+
+x_measures(nth_note(4, 16, 60)(), measures = 16)
+
+# 4 4 120 bpm 
+x_measures(nth_note(4, 120), 4)
+
+# 7 8 120 bpm
+x_measures(nth_note(8, 120, 7), 4)
+
+# what about a 16th note beat where the third note is muted? 
+
+get_beat <- function() {
+    
+}
+
+
+
+walk(list(one_note(240)(), silent_note(240)(), one_note(240)(), one_note(240)()), ~ .x %>% eval())
+
+```
+
+number of measures 
+number of beats in a measure (time signature)
+number of notes in a beat (maybe radiobars for controlling silenced beats)
+
+# Shiny App Part 
+
+```{r}
+ui <- fluidPage(
+    title = "shiny Gnome",
+    theme = shinythemes::shinytheme("yeti"),
+    titlePanel(windowTitle = "shiny Gnome",
+               title = div(img(src = "https://i.ibb.co/HNtb8cX/gnome.png",
+                               height = 100, width = 100,
+                               style = "margin:10px 10px"),
+                           "shinyGnome")),
+    sidebarLayout(
+        sidebarPanel(h4("Beats Per Minute"),
+                     hr(),
+                     sliderInput(inputId = "bpm",
+                                 label = "BPM",
+                                 min = 30,
+                                 max = 300,
+                                 value = 120,
+                                 step = 1),
+                     h4("Time Signature"),
+                     hr(),
+                     splitLayout(
+                         numericInput("count",
+                                      label = "Count",
+                                      value = 4,
+                                      min = 1,
+                                      max = 150,
+                                      step = 1),
+                         numericInput("note_length",
+                                      label = "Note Length",
+                                      value = 4,
+                                      min = 1,
+                                      max = 150,
+                                      step = 1)),
+                     h4("Bars"),
+                     hr(),
+                     numericInput("bars",
+                                  label = "Bars",
+                                  value = 4,
+                                  min = 1,
+                                  max = 500,
+                                  step = 1),
+                     h4("Build It!"),
+                     hr(),
+                     splitLayout(shinyWidgets::actionBttn("generate",
+                                              label = "Create",
+                                              icon = icon("sliders"),
+                                              color = "success",
+                                              style = "bordered",
+                                              block = TRUE),
+                     shinyWidgets::actionBttn("clear",
+                                              label = "Clear",
+                                              icon = icon("sliders"),
+                                              color = "warning",
+                                              style = "bordered",
+                                              block = TRUE))),
+        mainPanel(h4("Beat Selecta"),
+                  hr(),
+                  div(id = "beatSelecta"),
+                  ## uiOutput("generateBars"),
+                  hr(),
+                  splitLayout(shinyWidgets::actionBttn("play",
+                                                       label = "Play!",
+                                                       style = "bordered",
+                                                       color = "success",
+                                                       block = TRUE),
+                              shinyWidgets::actionBttn("",
+                                                       label = "Stop!",
+                                                       style = "bordered",
+                                                       color = "danger",
+                                                       block = TRUE))
+                  ## shinyWidgets::switchInput("play",
+                  ##                           onLabel = "Play",
+                  ##                           offLabel = "Stop",
+                  ##                           onStatus = "success",
+                  ##                           offStatus = "danger",
+                  ##                           value = TRUE)
+                  )))
+```
+
+Now we want to conditionally make radio buttons for each of the beats, with one box for each note (div 4)
+
+```{r}
+server <- function(input, output, session) {
+    observeEvent(input$generate, {
+        walk(1:input$bars,
+             ~ insertUI(selector = "#beatSelecta",
+                        where = "beforeEnd",
+                        ui = shinyWidgets::checkboxGroupButtons(inputId = paste0("bar_", .x),
+                                                                label = paste0("Bar ", .x),
+                                                                choices = 1:input$count)))
+        walk(1:input$bars, ~ {
+            output[[paste0("bar_txt_", .x)]] <- renderText({input[[paste0("bar_", .x)]]}) 
+        })
+
+        walk(1:input$bars, ~ {
+            insertUI(selector = "#beatSelecta",
+                     where = "beforeEnd",
+                     ui = verbatimTextOutput(outputId = paste0("bar_txt_", .x)))
+        })
+    })
+    
+    observeEvent(input$clear, {
+        walk(1:input$bars, ~ removeUI(selector = paste0("div:has(> #bar_", .x, ")")))
+    })
+    
+    # play beat
+    observeEvent(input$play, {
+        # generate beats for each bar. If number is in the checkbox, set it to silent, ow play sound
+        # get checkbox values
+        values <- input[["bar_1"]] %>%
+            str_extract_all(pattern = "[0-9]+") %>%
+            map(as.numeric) %>%
+            flatten_dbl()
+
+        repeat {
+            stoppit <- FALSE
+            
+            observeEvent(input$stop, {
+                stoppit <- TRUE
+            })
+            
+            if (stoppit == TRUE) {
+                break
+            } else {
+                walk(1:(input$count), ~ {
+                    ifelse(.x %in% values,
+                           silent_note(input$bpm)(),
+                    ifelse(.x == 1,
+                           one_note(input$bpm, ssobj)(),
+                           one_note(input$bpm)()))
+                })
+            }
+        }
+        
+        ## if (TRUE) {
+        ##         walk(1:(input$count), ~ {
+        ##             ifelse(.x %in% values,
+        ##                    silent_note(input$bpm)(),
+        ##             ifelse(.x == 1,
+        ##                    one_note(input$bpm, ssobj)(),
+        ##                    one_note(input$bpm)()))
+        ##         })
+        ## } else {
+        ##     break
+        ## }
+        
+        ## while (!input$play) {
+        ##     observeEvent(input$play, {
+        ##         if (TRUE)
+        ##     })
+        ##     walk(1:(input$count), ~ {
+        ##         ifelse(.x %in% values,
+        ##                silent_note(input$bpm)(),
+        ##         ifelse(.x == 1,
+        ##                one_note(input$bpm, ssobj)(),
+        ##                one_note(input$bpm)()))
+        ##     })
+        ## }
+        ## walk(1:(input$count), ~ {
+        ##     ifelse(.x %in% values,
+        ##            silent_note(input$bpm)(),
+        ##     ifelse(.x == 1,
+        ##            one_note(input$bpm, ssobj)(),
+        ##            one_note(input$bpm)()))
+        ## })
+        ## observeEvent(input$stop, {
+            
+        ## })
+    })
+}
+
+```
+
+```{r}
+shinyApp(ui, server)
+```
+
+It seems that to implement a stop button, I need async. 
+
+```{r}
+library(shiny)
+library(parallel)
+
+#
+# reactive variables
+# 
+rVal <- reactiveValues()
+rVal$process <- NULL
+rVal$msg <- NULL
+rVal$obs <- NULL
+counter <- 0
+results <- list()
+dfEmpty <- data.frame(results = numeric(0))
+
+
+#
+# Long computation
+#
+analyze <- function() {
+  out <- lapply(1:5, function(x) {
+    Sys.sleep(1)
+    rnorm(1)
+})
+  data.frame(results = unlist(out))
+}
+
+#
+# Shiny app
+#
+shinyApp(
+  ui = fluidPage(
+    column(6,
+      wellPanel(
+        tags$label("Press start and wait 5 seconds for the process to finish"),
+        actionButton("start", "Start", class = "btn-primary"),
+        actionButton("stop", "Stop", class = "btn-danger"),
+        textOutput('msg'),
+        tableOutput('result')
+        )
+      ),
+    column(6,
+      wellPanel(
+        sliderInput(
+          "inputTest",
+          "Shiny is responsive during computation",
+          min = 10,
+          max = 100,
+          value = 40
+          ),
+        plotOutput("testPlot")
+        ))),
+  server = function(input, output, session)
+  {
+    #
+    # Add something to play with during waiting
+    #
+    output$testPlot <- renderPlot({
+      plot(rnorm(input$inputTest))
+    })
+
+    #
+    # Render messages
+    #
+    output$msg <- renderText({
+      rVal$msg
+    })
+
+    #
+    # Render results
+    #
+    output$result <- renderTable({
+      print(rVal$result)
+      rVal$result
+    })
+
+    #
+    # Start the process
+    #
+    observeEvent(input$start, {
+      if (!is.null(rVal$process))
+        return()
+      rVal$result <- dfEmpty
+      rVal$process <- mcparallel({
+        analyze()
+      })
+
+      rVal$msg <- sprintf("%1$s started", rVal$process$pid)
+
+    })
+
+
+    #
+    # Stop the process
+    #
+    observeEvent(input$stop, {
+      rVal$result <- dfEmpty
+      if (!is.null(rVal$process)) {
+        tools::pskill(rVal$process$pid)
+        rVal$msg <- sprintf("%1$s killed", rVal$process$pid)
+        rVal$process <- NULL
+
+        if (!is.null(rVal$obs)) {
+          rVal$obs$destroy()
+        }
+      }
+    })
+
+    #
+    # Handle process event
+    #
+    observeEvent(rVal$process, {
+      rVal$obs <- observe({
+        invalidateLater(500, session)
+        isolate({
+        result <- mccollect(rVal$process, wait = FALSE)
+        if (!is.null(result)) {
+          rVal$result <- result
+          rVal$obs$destroy()
+          rVal$process <- NULL
+        }
+      })
+      })
+    })
+  }
+  )
+```

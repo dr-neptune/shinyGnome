@@ -2,6 +2,7 @@
 ```{r}
 library(tidyverse)
 library(shiny)
+library(parallel)
 ```
 
 # Get a Sound 
@@ -74,14 +75,6 @@ x_measures(nth_note(4, 120), 4)
 
 # 7 8 120 bpm
 x_measures(nth_note(8, 120, 7), 4)
-
-# what about a 16th note beat where the third note is muted? 
-
-get_beat <- function() {
-    
-}
-
-
 
 walk(list(one_note(240)(), silent_note(240)(), one_note(240)(), one_note(240)()), ~ .x %>% eval())
 
@@ -160,11 +153,11 @@ ui <- fluidPage(
                                                   status = "primary",
                                                   size = "sm"),
                               shinyWidgets::actionBttn("play",
-                                                       label = "Play!",
-                                                       style = "bordered",
-                                                       color = "success",
-                                                       block = TRUE,
-                                                       size = "sm"),
+                                           label = "Play!",
+                                           style = "bordered",
+                                           color = "success",
+                                           block = TRUE,
+                                           size = "sm"),
                               shinyWidgets::actionBttn("stop",
                                                        label = "Stop!",
                                                        style = "bordered",
@@ -178,8 +171,8 @@ Now we want to conditionally make radio buttons for each of the beats, with one 
 ```{r}
 server <- function(input, output, session) {
     # well, play it! 
-    play_that_funky_music <- function(bpm, count, values, stop) {
-            walk(1:count, ~ {
+    play_that_funky_music <- function(bpm, count, values) {
+            map(1:count, ~ {
                 if (.x %in% values) {
                     silent_note(bpm)()
                     cat("_")
@@ -221,15 +214,35 @@ server <- function(input, output, session) {
     observeEvent(input$clear, {
         walk(1:input$bars, ~ removeUI(selector = paste0("div:has(> #bar_", .x, ")")))
     })
-    
+
+    rVal <- reactiveValues()
+    rVal$process <- NULL
+
+    # Start a child process to play the beats when play is hit
     observeEvent(input$play, {
-            map(1:input$bars, ~ get_pattern(.x)) %>% walk(., ~ {
-                play_that_funky_music(bpm = input$bpm,
-                                      count = input$count,
-                                      values = .x,
-                                      stop = input$stop)})
+        # if the process exists, continue 
+        if (!is.null(rVal$process))
+            return()
+
+            # mcparallel doesn't seem to like being passed inputs
+            bpm <- input$bpm; count <- input$count; values <- map(1:input$bars, ~ get_pattern(.x))
+
+            # call the function 
+            rVal$process <- mcparallel({
+                repeat {
+                    walk(values, ~ play_that_funky_music(bpm, count, .x))
+                }
+            })
     })
-    
+
+    # Stop the child process
+    observeEvent(input$stop, {
+        if (!is.null(rVal$process)) {
+            # if its running kill it 
+            tools::pskill(rVal$process$pid)
+            rVal$process <- NULL
+        }
+    })
 }
 ```
 
@@ -239,7 +252,7 @@ shinyApp(ui, server)
 
 # Ideas
 
-- maybe update highlight on the radio buttons with the beat 
+- maybe update highlight on the radio buttons with the beat
 - loop! 
 - functionality for everything else (note duration)
 - polyrhythms 

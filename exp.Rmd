@@ -195,7 +195,7 @@ server <- function(input, output, session) {
                 ifelse(.x == 1,
                        one_note(bpm, ssobj)(),
                        one_note(bpm)())
-                cat("*")
+                cat(.x)
             }
         })
     }
@@ -228,28 +228,6 @@ server <- function(input, output, session) {
         beep(note_val)
     }
 
-    ## (input$bpm * (input$note_length / 4))
-
-    # generate other note length box
-    ## observeEvent(input$note_length == c("O"), {
-    ##     ## if (input$note_length == "O") {
-    ##         insertUI(selector = "#other_notes",
-    ##                  where = "beforeEnd",
-    ##                  ui = numericInput(inputId = "other_note_selector",
-    ##                                    label = "Enter other note length",
-    ##                                    value = 32,
-    ##                                    min = 1,
-    ##                                    max = 100,
-    ##                                    step = 1))
-
-    ##     ## } else {
-    ##     ##     removeUI(selector = "div#other_notes")
-    ##     ##     insertUI(selector = "#preNotes",
-    ##     ##              where = "beforeEnd",
-    ##     ##              ui = div(id = "other_notes"))
-    ##     ## }
-    ## })
-
     output$other_notes <- renderUI({
         if (input$note_length == "O") {
             numericInput(inputId = "other_notes_length",
@@ -263,7 +241,6 @@ server <- function(input, output, session) {
         }
     })
     
-    ## click_count <- 0
     # generate all the radio group buttons for the beats
     observeEvent(input$generate, {
         ## click_count <<- click_count + 1
@@ -300,12 +277,14 @@ server <- function(input, output, session) {
             return()
 
             # mcparallel doesn't seem to like being passed inputs
-            bpm <- getNoteValue(input$bpm, input$note_length, input$other_notes_length) ## (input$bpm * (input$note_length / 4));
+            bpm <- getNoteValue(input$bpm, input$note_length, input$other_notes_length)
             count <- input$count; values <- map(1:input$bars, ~ get_pattern(.x))
 
             # call the function 
             rVal$process <- mcparallel({
                 repeat {
+                    # add value counter to keep track of which measure currently on 
+                    ## value_counter <- 
                     walk(values, ~ play_that_funky_music(bpm, count, .x))
                 }
             })
@@ -329,6 +308,9 @@ shinyApp(ui, server)
 # Ideas
 
 - maybe update highlight on the radio buttons with the beat
-- loop!
-- functionality for everything else (note duration)
+  - alternatively, give some kind of visualization for where the beat is
 - polyrhythms 
+- sound choice 
+- make it funky (make it follow a specific cycle if %% 2 or %% 3)
+- make it weird (randomize sound input from scale)
+

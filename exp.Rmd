@@ -16,7 +16,7 @@ tuneR::setWavPlayer("/usr/bin/paplay")
 
 one_note <- function(bpm, sound = sobj) {
     one <- function(){
-        Sys.sleep(60 / bpm)
+        Sys.sleep((60 / bpm) - 0.05)
         tuneR::play(sound)
     }
     one
@@ -31,8 +31,8 @@ tuneR::play(ssobj)
 
 silent_note <- function(bpm) {
     one <- function() {
-        Sys.sleep(60 / bpm)
-        tuneR::play(tuneR::silence(duration = 0.1, xunit = "time"))
+        Sys.sleep((60 / bpm) - 0.05)
+        tuneR::play(tuneR::silence(duration = 0.05, xunit = "time"))
     }
     one
 }
@@ -144,15 +144,10 @@ ui <- fluidPage(
                                               block = TRUE))),
         mainPanel(h4("Beat Selecta"),
                   hr(),
+                  div(id = "preBeat"),
                   div(id = "beatSelecta"),
-                  ## uiOutput("generateBars"),
                   hr(),
-                  splitLayout(shinyWidgets::radioGroupButtons("loop",
-                                                  choices = c("Loop", "Noop"),
-                                                  selected = "Noop",
-                                                  status = "primary",
-                                                  size = "sm"),
-                              shinyWidgets::actionBttn("play",
+                  splitLayout(shinyWidgets::actionBttn("play",
                                            label = "Play!",
                                            style = "bordered",
                                            color = "success",
@@ -169,20 +164,31 @@ ui <- fluidPage(
 Now we want to conditionally make radio buttons for each of the beats, with one box for each note (div 4)
 
 ```{r}
+gen_random_color <- function() {
+    prng <- floor(runif(n = 1, min = 0, max = 3))
+    if (prng == 0) {
+        "success"
+    } else if (prng == 1) {
+        "warning"
+    } else {
+        "danger"
+    }
+}
+
 server <- function(input, output, session) {
     # well, play it! 
     play_that_funky_music <- function(bpm, count, values) {
-            map(1:count, ~ {
-                if (.x %in% values) {
-                    silent_note(bpm)()
-                    cat("_")
-                } else {
-                    ifelse(.x == 1,
-                           one_note(bpm, ssobj)(),
-                           one_note(bpm)())
-                    cat("*")
-                }
-            })
+        map(1:count, ~ {
+            if (.x %in% values) {
+                silent_note(bpm)()
+                cat("_")
+            } else {
+                ifelse(.x == 1,
+                       one_note(bpm, ssobj)(),
+                       one_note(bpm)())
+                cat("*")
+            }
+        })
     }
 
     # get the rests in a given bar 
@@ -192,29 +198,39 @@ server <- function(input, output, session) {
             map(as.numeric) %>%
             flatten_dbl()
     }
-    
+
+    # get all the inputs that follow a pattern. Used for removeUI
+    getInputs <- function(pattern) {
+        reactives <- names(reactiveValuesToList(input))
+        reactives[grep(pattern, reactives)]
+    }
+
+    ## click_count <- 0
+    # generate all the radio group buttons for the beats
     observeEvent(input$generate, {
+        ## click_count <<- click_count + 1
         walk(1:input$bars,
              ~ insertUI(selector = "#beatSelecta",
                         where = "beforeEnd",
-                        ui = shinyWidgets::checkboxGroupButtons(inputId = paste0("bar_", .x),
-                                                                label = paste0("Bar ", .x),
-                                                                choices = 1:input$count)))
-        walk(1:input$bars, ~ {
-            output[[paste0("bar_txt_", .x)]] <- renderText({input[[paste0("bar_", .x)]]})
-        })
-
-        walk(1:input$bars, ~ {
-            insertUI(selector = "#beatSelecta",
-                     where = "beforeEnd",
-                     ui = verbatimTextOutput(outputId = paste0("bar_txt_", .x)))
-        })
+                        ui = shinyWidgets::checkboxGroupButtons(inputId = paste0("bar_", ## click_count, "_", 
+                                                                                 .x),
+                                                                ## label = paste0("Bar ", .x),
+                                                                choices = 1:input$count,
+                                                                status = gen_random_color())))
+        shinyjs::disable("generate")
+        shinyjs::enable("clear")
     })
-    
+
+    # remove those same radio group buttons
     observeEvent(input$clear, {
-        walk(1:input$bars, ~ removeUI(selector = paste0("div:has(> #bar_", .x, ")")))
+        removeUI(selector = "div#beatSelecta")
+        insertUI(selector = "#preBeat",
+                 where = "beforeEnd",
+                 ui = div(id = "beatSelecta"))
+        shinyjs::enable("generate")
     })
 
+    # this is a placeholder for the child process used by the play button 
     rVal <- reactiveValues()
     rVal$process <- NULL
 
@@ -225,7 +241,7 @@ server <- function(input, output, session) {
             return()
 
             # mcparallel doesn't seem to like being passed inputs
-            bpm <- input$bpm; count <- input$count; values <- map(1:input$bars, ~ get_pattern(.x))
+            bpm <- (input$bpm * (input$note_length / 4)); count <- input$count; values <- map(1:input$bars, ~ get_pattern(.x))
 
             # call the function 
             rVal$process <- mcparallel({
@@ -238,7 +254,7 @@ server <- function(input, output, session) {
     # Stop the child process
     observeEvent(input$stop, {
         if (!is.null(rVal$process)) {
-            # if its running kill it 
+            # if its running kill it
             tools::pskill(rVal$process$pid)
             rVal$process <- NULL
         }
@@ -253,6 +269,6 @@ shinyApp(ui, server)
 # Ideas
 
 - maybe update highlight on the radio buttons with the beat
-- loop! 
+- loop!
 - functionality for everything else (note duration)
 - polyrhythms 

@@ -98,6 +98,7 @@ ui <- fluidPage(
                            "shinyGnome")),
     sidebarLayout(
         sidebarPanel(h4("Beats Per Minute"),
+                     width = 4,
                      hr(),
                      sliderInput(inputId = "bpm",
                                  label = "BPM",
@@ -114,12 +115,20 @@ ui <- fluidPage(
                                       min = 1,
                                       max = 150,
                                       step = 1),
-                         numericInput("note_length",
-                                      label = "Note Length",
-                                      value = 4,
-                                      min = 1,
-                                      max = 150,
-                                      step = 1)),
+                         shinyWidgets::radioGroupButtons("note_length",
+                                     label = "Note Length",
+                                     choices = c("1", "2", "4", "8", "16", "O"),
+                                     selected = "4")
+                         ## numericInput("note_length",
+                         ##              label = "Note Length",
+                         ##              value = 4,
+                         ##              min = 1,
+                         ##              max = 150,
+                         ##              step = 1)
+                     ),
+                     ## div(id = "pre_notes"),
+                     ## div(id = "other_notes"),
+                     uiOutput("other_notes"),
                      h4("Bars"),
                      hr(),
                      numericInput("bars",
@@ -205,6 +214,55 @@ server <- function(input, output, session) {
         reactives[grep(pattern, reactives)]
     }
 
+    getNoteValue <- function(bpm, note_val, ow) {
+        if (note_val == "O") {
+            note_val <- ow
+        } else {
+            note_val <- as.double(note_val)
+        }
+        
+        beep <- function(diff) {
+            bpm * (note_val / 4)
+        }
+
+        beep(note_val)
+    }
+
+    ## (input$bpm * (input$note_length / 4))
+
+    # generate other note length box
+    ## observeEvent(input$note_length == c("O"), {
+    ##     ## if (input$note_length == "O") {
+    ##         insertUI(selector = "#other_notes",
+    ##                  where = "beforeEnd",
+    ##                  ui = numericInput(inputId = "other_note_selector",
+    ##                                    label = "Enter other note length",
+    ##                                    value = 32,
+    ##                                    min = 1,
+    ##                                    max = 100,
+    ##                                    step = 1))
+
+    ##     ## } else {
+    ##     ##     removeUI(selector = "div#other_notes")
+    ##     ##     insertUI(selector = "#preNotes",
+    ##     ##              where = "beforeEnd",
+    ##     ##              ui = div(id = "other_notes"))
+    ##     ## }
+    ## })
+
+    output$other_notes <- renderUI({
+        if (input$note_length == "O") {
+            numericInput(inputId = "other_notes_length",
+                         label = "Enter other note length",
+                         value = 32,
+                         min = 1,
+                         max = 100,
+                         step = 1)
+        } else {
+            br()
+        }
+    })
+    
     ## click_count <- 0
     # generate all the radio group buttons for the beats
     observeEvent(input$generate, {
@@ -230,6 +288,7 @@ server <- function(input, output, session) {
         shinyjs::enable("generate")
     })
 
+
     # this is a placeholder for the child process used by the play button 
     rVal <- reactiveValues()
     rVal$process <- NULL
@@ -241,7 +300,8 @@ server <- function(input, output, session) {
             return()
 
             # mcparallel doesn't seem to like being passed inputs
-            bpm <- (input$bpm * (input$note_length / 4)); count <- input$count; values <- map(1:input$bars, ~ get_pattern(.x))
+            bpm <- getNoteValue(input$bpm, input$note_length, input$other_notes_length) ## (input$bpm * (input$note_length / 4));
+            count <- input$count; values <- map(1:input$bars, ~ get_pattern(.x))
 
             # call the function 
             rVal$process <- mcparallel({

@@ -23,11 +23,14 @@ one_note <- function(bpm, sound = sobj) {
 }
 
 library(tuneR)
-wobj <- sine(440)
+wobj <- normalize(sine(440) + sine(880) + sine(440), "16")
 ssobj <- pulse(100, duration = 0.05, xunit = "time")
 sobj <- pulse(50, duration = 0.05, xunit = "time")
 
-tuneR::play(ssobj)
+tuneR::play(wobj)
+
+
+
 
 silent_note <- function(bpm) {
     one <- function() {
@@ -83,6 +86,111 @@ walk(list(one_note(240)(), silent_note(240)(), one_note(240)(), one_note(240)())
 number of measures 
 number of beats in a measure (time signature)
 number of notes in a beat (maybe radiobars for controlling silenced beats)
+
+# Sounds 
+
+Ideas: 
+- try out some chords 
+- build out intervals
+- maybe make a finite state automata for chord progressions
+
+```{r}
+# A 1 2 5
+wobj <- normalize(sine(440) +
+                  sine(495) +
+                  sine(660), "16")
+
+# B 1 2 5
+wobj2 <- normalize(sine(495) +
+                  sine(521.4815) +
+                  sine(695.3085), "16")
+
+# E 1 3 5
+wobj3 <- normalize(sine(660) +
+                  sine(782.2222) +
+                  sine(880), "16")
+
+play(wobj)
+play(wobj2)
+play(wobj3)
+
+# encode the table
+notes_table <- tribble(~note, ~frequency, ~interval,
+                       "A",	440, "1",
+                       "A#", 463.5391, "m2",
+                       "B", 495, "2", 
+                       "C", 521.4815, "3",
+                       "C#", 556.875, "m4",
+                       "D", 586.6667, "4",
+                       "D#", 626.4844, "m5",
+                       "E", 660, "5",
+                       "F",	695.3086, "6",
+                       "F#", 742.5, "m7",
+                       "G", 782.2222, "7",
+                       "G#", 835.3125, "s7",
+                       "A", 880, "o")
+
+make_chord <- function(play = FALSE, ...) {
+    # get notes from table for intervals 
+    notes_table %>%
+        filter(interval %in% c(...)) -> c_tbl
+
+    # pull the frequencies 
+    freqs <- c_tbl %>% pull(frequency)
+
+    # call the sine function, add em up, normalize, and play
+    map(freqs, ~ sine(.x, duration = 1, xunit = "time")) %>%
+        reduce(`+`) %>%
+        normalize("16") -> chord
+
+    if (play == TRUE) {
+        play(chord)
+    } else {
+        return(chord)
+    }
+}
+
+notes_table %>%
+    filter(interval %in% c(2, 5, "m7"))
+
+make_chord(1, 3, 5) -> c1
+make_chord(1, 2, 5) -> c2
+make_chord(1, 2, "m7") -> c3
+
+list(list(1, 3, 5),
+     list(1, 3, "m5"),
+     list(1, "m3", 6),
+     list(2, 5, 7)) -> ex_cpr
+
+make_chord_progression <- function(clist) {
+    clist %>%
+        map(., ~ {.x %>%
+                      as.character() %>%
+                      paste(collapse = ",") %>%
+                      make_chord(.x) %>%
+                      play()})
+}
+
+ex_cpr %>%
+    make_chord_progression()
+```
+
+## Markov Chain for Chord Progressions 
+
+The idea is to build out a markov chain which decides what chord to play next.
+
+We will start with a super simple one, then go to a standard representation, then we can add other intervals and make it really spicy. 
+
+Our initial version will look like this: 
+
+1 -> any 
+2 -> {IV, vii, V}
+3 -> {IV, vi}
+4 -> {ii, vii, V}
+5 -> {vii, I, vi}
+6 -> {IV, ii}
+7 -> {V, I}
+
 
 # Shiny App Part 
 
@@ -309,8 +417,8 @@ shinyApp(ui, server)
 
 - maybe update highlight on the radio buttons with the beat
   - alternatively, give some kind of visualization for where the beat is
-- polyrhythms 
-- sound choice 
+- polyrhythms
+- sound choice
 - make it funky (make it follow a specific cycle if %% 2 or %% 3)
 - make it weird (randomize sound input from scale)
 
